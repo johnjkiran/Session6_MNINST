@@ -94,16 +94,15 @@ def count_parameters(model):
 def train_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    # Enhanced data augmentation with more subtle transformations
+    # Enhanced data augmentation but less aggressive
     transform_train = transforms.Compose([
-        transforms.RandomRotation((-8, 8)),  # Reduced rotation range
+        transforms.RandomRotation((-5, 5)),  # Reduced rotation
         transforms.RandomAffine(
             degrees=0, 
-            translate=(0.08, 0.08),  # Add small translations
-            scale=(0.95, 1.05),      # Add slight scaling
-            shear=(-5, 5)
+            translate=(0.05, 0.05),  # Smaller translations
+            scale=(0.98, 1.02),      # Smaller scaling
+            shear=(-2, 2)            # Reduced shear
         ),
-        transforms.ColorJitter(brightness=0.2),  # Added slight brightness variation
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
     ])
@@ -114,27 +113,33 @@ def train_model():
     ])
     
     train_dataset = datasets.MNIST('./data', train=True, download=True, transform=transform_train)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, 
+        batch_size=128,  # Increased batch size
+        shuffle=True,
+        num_workers=2    # Add workers for faster loading
+    )
     
     # Add validation set
     test_dataset = datasets.MNIST('./data', train=False, download=True, transform=transform_test)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1000)
     
     model = MNISTNet().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.002, weight_decay=1e-5)  # Increased initial learning rate
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)  # Adjusted learning rate and weight decay
     scheduler = ReduceLROnPlateau(
         optimizer, 
         mode='max',
-        factor=0.2,      # More aggressive LR reduction
-        patience=1,      # Reduced patience for faster adaptation
-        verbose=True
+        factor=0.5,      # Less aggressive reduction
+        patience=2,      # More patience
+        verbose=True,
+        min_lr=1e-5     # Add minimum learning rate
     )
     
     best_accuracy = 0
     patience_counter = 0
-    max_patience = 4    # Adjusted early stopping patience for 20 epochs
+    max_patience = 5    # Increased patience
     
-    for epoch in range(20):  # Keep at 20 epochs
+    for epoch in range(20):
         model.train()
         for batch_idx, (data, target) in enumerate(train_loader):
             data, target = data.to(device), target.to(device)
@@ -142,10 +147,11 @@ def train_model():
             output = model(data)
             loss = F.nll_loss(output, target)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            # Reduced gradient clipping threshold
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=0.5)
             optimizer.step()
             
-            if batch_idx % 100 == 0:
+            if batch_idx % 50 == 0:  # More frequent printing
                 print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
                       f'({100. * batch_idx / len(train_loader):.0f}%)]\tLoss: {loss.item():.6f}')
         
